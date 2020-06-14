@@ -113,7 +113,7 @@
 -define(DEFAULT_DURATION_BUCKETS, [0.01, 0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 4]).
 -define(DEFAULT_EARLY_ERROR_LABELS, []).
 -define(DEFAULT_PROTOCOL_UPGRADE_LABELS, []).
--define(DEFAULT_REQUEST_LABELS, [method, reason, status_class]).
+-define(DEFAULT_REQUEST_LABELS, [method, reason, status_class, url]).
 -define(DEFAULT_ERROR_LABELS, [method, reason, error]).
 -define(DEFAULT_LABELS_MODULE, undefined).
 -define(DEFAULT_REGISTRY, default).
@@ -255,6 +255,31 @@ label_value(status_class, #{resp_status:=Status}) when is_binary(Status) ->
   undefined;
 label_value(status_class, #{resp_status:=Status}) when is_integer(Status) ->
   prometheus_http:status_class(Status);
+label_value(url, #{req := CowboyReq}) ->
+  Bindings = cowboy_req:bindings(CowboyReq),
+  PathInfo = cowboy_req:path_info(CowboyReq),
+  FinalPath = 
+    case PathInfo of
+      undefined ->
+        BindingValues = maps:values(Bindings),
+        PathInfo2 = 
+          lists:foldl(
+            fun(PathInfo1, Acc) ->
+              case lists:member(PathInfo1, BindingValues) of
+                true ->
+                  [<<"_">> | Acc];
+                false ->
+                    [PathInfo1 | Acc]
+              end
+            end,
+            [], PathInfo      
+            ),
+        lists:reverse(PathInfo2);
+      _ ->
+        PathInfo
+  end,
+  lists:flatten(lists:join("/", [binary_to_list(B) || B <- FinalPath]));
+
 label_value(reason, #{reason:=Reason}) ->
   case Reason of
     _ when is_atom(Reason) -> Reason;
